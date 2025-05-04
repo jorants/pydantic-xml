@@ -31,6 +31,13 @@ __all__ = (
 )
 
 
+try:
+    from pydantic.v1.typing import resolve_annotations
+except ImportError:
+    from pydantic.typing import resolve_annotations
+
+    
+    
 @dc.dataclass
 class ComputedXmlEntityInfo(pd.fields.ComputedFieldInfo):
     """
@@ -320,6 +327,11 @@ def create_model(
 ValidatorFunc = Callable[[Type['BaseXmlModel'], XmlElementReader, str], Any]
 ValidatorFuncT = TypeVar('ValidatorFuncT', bound=ValidatorFunc)
 
+@dc.dataclass(frozen=True)
+class XmlValidator:
+    # Pydantic uses _from_decotator funciton on this class to convert decorator functions to Annotations
+    func: ValidatorFuncT
+
 
 def xml_field_validator(field: str, /, *fields: str) -> Callable[[ValidatorFuncT], ValidatorFuncT]:
     """
@@ -338,6 +350,10 @@ def xml_field_validator(field: str, /, *fields: str) -> Callable[[ValidatorFuncT
 
 SerializerFunc = Callable[['BaseXmlModel', XmlElementWriter, Any, str], Any]
 SerializerFuncT = TypeVar('SerializerFuncT', bound=SerializerFunc)
+
+@dc.dataclass(frozen=True)
+class XmlSerializer:
+    func: SerializerFuncT
 
 
 def xml_field_serializer(field: str, /, *fields: str) -> Callable[[SerializerFuncT], SerializerFuncT]:
@@ -439,15 +455,30 @@ class BaseXmlModel(BaseModel, __xml_abstract__=True, metaclass=XmlModelMeta):
         # though we want to skip any Base(Xml)Model attributes, as these can never be field
         # serializers/validators, and getting certain pydantic fields, like __pydantic_post_init__
         # may cause recursion errors for recursive / self-referential models
-        for attr_name in set(dir(cls)) - set(dir(BaseXmlModel)):
-            if func := getattr(cls, attr_name, None):
-                if fields := getattr(func, '__xml_field_serializer__', None):
-                    for field in fields:
-                        cls.__xml_field_serializers__[field] = func
-                if fields := getattr(func, '__xml_field_validator__', None):
-                    for field in fields:
-                        cls.__xml_field_validators__[field] = func
+        annotations = resolve_annotations(cls.__annotations__, cls.__module__)
+        
 
+        
+        for attr_name in set(dir(cls)) - set(dir(BaseXmlModel)):
+            if attr := getattr(cls, attr_name, None):
+                if fields := getattr(attr, '__xml_field_serializer__', None):
+                    # function
+                    for field in fields:
+                        cls.__xml_field_serializers__[field] = attr
+                if fields := getattr(attr, '__xml_field_validator__', None):
+                    # function
+                    for field in fields:
+                        cls.__xml_field_validators__[field] = attr
+                
+            if attr_name in annotations:
+                annotation = annotations[attr_name]
+                for part in getattr(annotation,"__metadata__", []):
+                    if isinstance(part,XmlValidator):
+                        cls.__xml_field_validators__[attr_name] = part.func
+                    if isinstance(part,XmlSerializer):
+                        cls.__xml_field_serializers__[attr_name] = part.func
+                            
+                        
     @classmethod
     def __build_serializer__(cls) -> None:
         if cls is BaseXmlModel:

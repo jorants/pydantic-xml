@@ -5,7 +5,7 @@ pydantic xml serialization/deserialization extension
 from . import config, errors, model
 from .errors import ModelError, ParsingError
 from .model import BaseXmlModel, RootXmlModel, attr, computed_attr, computed_element, create_model, element, wrapped
-from .model import xml_field_serializer, xml_field_validator
+from .model import xml_field_serializer, xml_field_validator, XmlValidator, XmlSerializer
 
 __all__ = (
     'BaseXmlModel',
@@ -22,4 +22,6 @@ __all__ = (
     'model',
     'xml_field_serializer',
     'xml_field_validator',
+    'XmlValidator',
+    'XmlSerializer',
 )
